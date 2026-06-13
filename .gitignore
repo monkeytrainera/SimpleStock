@@ -1,0 +1,53 @@
+# 虚拟环境
+venv/
+.env
+.venv/
+
+# 数据库文件
+data/
+*.db
+
+# 日志文件
+logs/
+*.log
+
+# 备份文件
+backup/
+*.zip
+
+# PyInstaller 打包产物
+dist/
+build/
+*.spec
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# IDE配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows 系统文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 测试覆盖率
+htmlcov/
+.coverage
+.tox/
+
+# 临时文件
+*.tmp
+*.bak
