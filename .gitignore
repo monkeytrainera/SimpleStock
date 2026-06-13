@@ -4,7 +4,6 @@ venv/
 .venv/
 
 # 数据库文件
-data/
 *.db
 
 # 日志文件
