@@ -1,8 +1,25 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
-                             QTableWidgetItem, QPushButton, QLabel, QDialog,
-                             QFormLayout, QLineEdit, QMessageBox)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QMessageBox,
+    QTableWidgetItem,
+    QWidget,
+)
+
 from src.business.account_service import AccountService
+from src.ui.ui_utils import (
+    create_button,
+    create_button_layout,
+    create_cancel_button,
+    create_line_edit,
+    create_search_layout,
+    create_standard_layout,
+    create_table_widget,
+)
+
 
 class AccountManageWidget(QWidget):
     def __init__(self, parent, user):
@@ -10,197 +27,175 @@ class AccountManageWidget(QWidget):
         self.user = user
         self.init_ui()
         self.refresh_data()
-    
+
     def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
-        
+        layout = create_standard_layout()
+
         header_layout = QHBoxLayout()
         header_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-        
-        self.add_btn = QPushButton("新增操作员")
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 20px;
-                background-color: #1E88E5;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-        """)
+
+        self.add_btn = create_button("新增用户")
         self.add_btn.clicked.connect(self.handle_add)
         header_layout.addWidget(self.add_btn)
-        
+
         layout.addLayout(header_layout)
-        
-        self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["用户名", "角色", "创建时间", "操作"])
-        self.table.setStyleSheet("""
-            QTableWidget {
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                font-size: 13px;
-            }
-            QHeaderView::section {
-                background-color: #F5F5F5;
-                padding: 8px;
-                font-weight: bold;
-            }
-        """)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        
+
+        self.search_edit, search_layout = create_search_layout()
+        self.search_edit.textChanged.connect(self.handle_search)
+        layout.addLayout(search_layout)
+
+        self.table = create_table_widget(["用户名", "角色", "操作"])
         layout.addWidget(self.table)
-        
+
         self.setLayout(layout)
-    
-    def refresh_data(self):
+
+    def refresh_data(self, keyword=""):
         try:
-            users = AccountService.get_all_operators()
+            users = AccountService.search_users(keyword)
             self.table.setRowCount(len(users))
-            
+
             for row, user in enumerate(users):
-                self.table.setItem(row, 0, QTableWidgetItem(user['username']))
-                role = "管理员" if user['role'] == 'admin' else "操作员"
-                self.table.setItem(row, 1, QTableWidgetItem(role))
-                self.table.setItem(row, 2, QTableWidgetItem(user['created_at']))
-                
-                if user['role'] == 'admin':
-                    label = QLabel("(不可删除)")
-                    label.setStyleSheet("color: #999; font-size: 12px;")
-                    self.table.setCellWidget(row, 3, label)
-                else:
-                    delete_btn = QPushButton("删除")
-                    delete_btn.setStyleSheet("""
-                        QPushButton {
-                            padding: 4px 12px;
-                            background-color: #F44336;
-                            color: white;
-                            border: none;
-                            border-radius: 3px;
-                            font-size: 12px;
-                        }
-                        QPushButton:hover {
-                            background-color: #D32F2F;
-                        }
-                    """)
-                    delete_btn.clicked.connect(lambda checked, u=user: self.handle_delete(u))
-                    self.table.setCellWidget(row, 3, delete_btn)
-            
+                self.table.setItem(row, 0, QTableWidgetItem(user["username"]))
+                role_text = "管理员" if user["is_admin"] else "操作员"
+                self.table.setItem(row, 1, QTableWidgetItem(role_text))
+
+                from src.ui.ui_utils import create_action_buttons
+
+                btn_widget = create_action_buttons(
+                    self.handle_edit, self.handle_delete, user
+                )
+                self.table.setCellWidget(row, 2, btn_widget)
+
             self.table.resizeColumnsToContents()
         except Exception as e:
             QMessageBox.critical(self, "错误", str(e))
-    
+
+    def handle_search(self, keyword):
+        self.refresh_data(keyword)
+
     def handle_add(self):
-        dialog = AddOperatorDialog(self)
+        dialog = AccountFormDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.refresh_data()
-    
+
+    def handle_edit(self, user):
+        if user["username"] == self.user["username"]:
+            dialog = AccountFormDialog(self, user, True)
+        else:
+            dialog = AccountFormDialog(self, user)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.refresh_data()
+
     def handle_delete(self, user):
+        if user["username"] == self.user["username"]:
+            QMessageBox.warning(self, "警告", "不能删除当前登录用户")
+            return
+
         confirm = QMessageBox.question(
-            self, "确认删除", f"确定要删除操作员 '{user['username']}' 吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self,
+            "确认删除",
+            f"确定要删除用户 '{user['username']}' 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        
+
         if confirm == QMessageBox.StandardButton.Yes:
             try:
-                AccountService.delete_operator(user['id'])
-                QMessageBox.information(self, "删除成功", "操作员删除成功")
+                AccountService.delete_user(user["id"])
+                QMessageBox.information(self, "删除成功", "用户删除成功")
                 self.refresh_data()
             except ValueError as e:
                 QMessageBox.warning(self, "删除失败", str(e))
 
-class AddOperatorDialog(QDialog):
-    def __init__(self, parent):
+
+class AccountFormDialog(QDialog):
+    def __init__(self, parent, user=None, is_self=False):
         super().__init__(parent)
+        self.user = user
+        self.is_self = is_self
         self.init_ui()
-    
+
     def init_ui(self):
-        self.setWindowTitle("新增操作员")
-        self.setFixedSize(350, 250)
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
-        
+        if self.user:
+            self.setWindowTitle("编辑用户")
+        else:
+            self.setWindowTitle("新增用户")
+
+        self.setFixedSize(400, 320)
+
+        layout = create_standard_layout((20, 20, 20, 20), 15)
+
         form_layout = QFormLayout()
         form_layout.setSpacing(10)
-        
-        self.username_edit = QLineEdit()
-        self.username_edit.setPlaceholderText("请输入用户名")
-        
-        self.password_edit = QLineEdit()
-        self.password_edit.setPlaceholderText("请输入密码（至少6位）")
+
+        self.username_edit = create_line_edit("请输入用户名")
+        self.password_edit = create_line_edit("请输入密码")
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        
+
+        self.confirm_edit = create_line_edit("请再次输入密码")
+        self.confirm_edit.setEchoMode(QLineEdit.EchoMode.Password)
+
         form_layout.addRow("用户名 *", self.username_edit)
         form_layout.addRow("密码 *", self.password_edit)
-        
+        form_layout.addRow("确认密码 *", self.confirm_edit)
+
         layout.addLayout(form_layout)
-        
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
-        button_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-        
-        ok_btn = QPushButton("保存")
-        ok_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 20px;
-                background-color: #1E88E5;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-        """)
+
+        ok_btn = create_button("保存")
         ok_btn.clicked.connect(self.handle_ok)
-        
-        cancel_btn = QPushButton("取消")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 20px;
-                background-color: #F5F5F5;
-                color: #333;
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #E8E8E8;
-            }
-        """)
+
+        cancel_btn = create_cancel_button()
         cancel_btn.clicked.connect(self.reject)
-        
-        button_layout.addWidget(ok_btn)
-        button_layout.addWidget(cancel_btn)
-        
+
+        button_layout = create_button_layout([ok_btn, cancel_btn])
         layout.addLayout(button_layout)
-        
+
         self.setLayout(layout)
-    
+
+        if self.user:
+            self.username_edit.setText(self.user["username"])
+            if self.is_self:
+                self.username_edit.setEnabled(False)
+            else:
+                self.username_edit.setEnabled(False)
+                self.password_edit.setPlaceholderText("留空则不修改密码")
+                self.confirm_edit.setPlaceholderText("留空则不修改密码")
+
     def handle_ok(self):
         username = self.username_edit.text().strip()
         password = self.password_edit.text()
-        
+        confirm = self.confirm_edit.text()
+
         if not username:
             QMessageBox.warning(self, "错误", "用户名不能为空")
             return
-        
-        if not password or len(password) < 6:
+
+        if self.user and not password:
+            try:
+                AccountService.update_user(self.user["id"], username, None)
+                self.accept()
+                return
+            except ValueError as e:
+                QMessageBox.warning(self, "错误", str(e))
+                return
+
+        if not password:
+            QMessageBox.warning(self, "错误", "密码不能为空")
+            return
+
+        if password != confirm:
+            QMessageBox.warning(self, "错误", "两次输入的密码不一致")
+            return
+
+        if len(password) < 6:
             QMessageBox.warning(self, "错误", "密码长度不能少于6位")
             return
-        
+
         try:
-            AccountService.add_operator(username, password)
-            QMessageBox.information(self, "添加成功", "操作员添加成功")
+            if self.user:
+                AccountService.update_user(self.user["id"], username, password)
+            else:
+                AccountService.add_user(username, password)
+
             self.accept()
         except ValueError as e:
-            QMessageBox.warning(self, "添加失败", str(e))
+            QMessageBox.warning(self, "错误", str(e))
